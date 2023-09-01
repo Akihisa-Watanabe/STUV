@@ -247,7 +247,7 @@ class STUVMatcher:
     ):
         self.disable_parallel = os.getppid() != 1
         self.sigma = sigma
-        self.delta_t = delta_t
+        self.Delta_t = delta_t
         self.model_type = model_type
         self.regression_type = regression_type
         self._set_matcher_model()
@@ -307,7 +307,7 @@ class STUVMatcher:
         np.random.seed(42)
         cv = StratifiedKFold(n_splits=4, shuffle=True, random_state=42)
         grid_search_params = {
-            "estimator": self.mather_model,
+            "estimator": self.matcher_model,
             "param_grid": self.params,
             "scoring": "f1",
             "cv": cv,
@@ -318,7 +318,7 @@ class STUVMatcher:
 
         grid_search = GridSearchCV(**grid_search_params)
         grid_search.fit(X_train, y_train)
-        self.mather_model = grid_search.best_estimator_
+        self.matcher_model = grid_search.best_estimator_
 
     def fit_liveness(self, X_genuine, time_labels):
         """
@@ -336,7 +336,7 @@ class STUVMatcher:
         self.T = max(np.unique(self.timestamps))
         if self.regression_type == "kernel_ridge":
             self.reg_model = self._train_kernel_ridge()
-            self.sigma, self.Delta_t = self.optimize_parameters()
+            self.sigma = self.optimize_parameters()
         else:
             raise ValueError(
                 "Invalid regression type. Choose 'gaussian_process' or 'kernel_ridge'."
@@ -380,20 +380,7 @@ class STUVMatcher:
         # Update sigma based on the standard deviation of the latest templates
         self.sigma = np.std(self.latest_templates)
 
-        # Assuming self.predicted_templates is sorted by time, get the latest data point
-        self.query_time = np.linspace(0, self.T, 10 * len(self.timestamps)).reshape(-1, 1)
-        self.predicted_templates = self._predict_trajectory(self.query_time)
-        # Get the latest data point in self.predicted_templates
-        latest_predicted_template = self.predicted_templates[-1, :]
-        # Extract data points within the range of one standard deviation (self.sigma)
-        indices_within_range = np.where(
-            np.abs(self.predicted_templates - latest_predicted_template) <= self.sigma
-        )
-        times_within_range = self.query_time[indices_within_range, 0]
-        # Calculate self.Delta_t based on the difference between the latest time and the smallest time within the range
-        self.Delta_t = self.latest_timestamp - np.min(times_within_range)
-
-        return self.sigma, self.Delta_t
+        return self.sigma
 
     def _balance_data(self, X_genuine, X_classifier, classifier_user_labels):
         """
@@ -523,7 +510,7 @@ class STUVMatcher:
         --------
         array-like: Computed prediction probabilities for the matcher model.
         """
-        return self.mather_model.predict_proba(X)
+        return self.matcher_model.predict_proba(X)
 
     def _predict_trajectory(self, query_time):
         """
